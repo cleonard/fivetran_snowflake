@@ -1,3 +1,11 @@
+# Custom
+.DS_Store
+files/
+creds
+Screenshot*
+secrets.json
+.python-version
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

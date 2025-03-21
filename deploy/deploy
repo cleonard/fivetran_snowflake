@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+# Run the Fivetran connector deployment command with values from .env
+
+# Export env vars from .env
+export $(grep -v '^#' .env | xargs)
+
+# Create configuration.json by adding .env variables to the object in base_config.json
+python gen_config.py
+
+fivetran deploy \
+  --api-key "${FIVETRAN_API_KEY}" \
+  --destination "${FIVETRAN_DESTINATION_NAME}" \
+  --connection "${FIVETRAN_CONNECTION_NAME}" \
+  --configuration configuration.json
