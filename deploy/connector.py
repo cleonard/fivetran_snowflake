@@ -16,7 +16,7 @@ TL_CONF = {"include_segments": False}
 TL_URL = "https://app.tabulalingua.com/v0/standard/"
 
 
-def get_latest_published_at(config):
+def get_latest_published_at(conf):
     """Custom method to get the latest `published_at` value from our ARTICLES table in
     Snowflake. Fivetran's state object, which keeps up with the latest datetime value
     FROM which to query the source, has gotten out-of-sync occassionally and will miss
@@ -24,12 +24,12 @@ def get_latest_published_at(config):
 
     TODO: Handle empty responses for beginning state."""
     cnx = snowflake.connector.connect(
-        user=config["snowflakeUser"],
-        password=config["snowflakePassword"],
-        account=config["snowflakeAccount"],
-        warehouse=config["snowflakeWarehouse"],
-        database=config["snowflakeDatabase"],
-        schema=config["snowflakeSchema"],
+        user=conf["snowflakeUser"],
+        password=conf["snowflakePassword"],
+        account=conf["snowflakeAccount"],
+        warehouse=conf["snowflakeWarehouse"],
+        database=conf["snowflakeDatabase"],
+        schema=conf["snowflakeSchema"],
     )
 
     result = cnx.cursor().execute("select max(published_at) from article").fetchone()
@@ -81,7 +81,7 @@ def update(configuration: dict, state: dict):
         now = datetime.datetime.now()
 
         # From datetime:
-        last_pub_date = get_latest_published_at(config)
+        last_pub_date = get_latest_published_at(conf)
         from_ts = state.get("to_ts")
         if not from_ts:
             delta = datetime.timedelta(days=2)
