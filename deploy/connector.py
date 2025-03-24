@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from fivetran_connector_sdk import Connector
 from fivetran_connector_sdk import Logging as log
 from fivetran_connector_sdk import Operations as op
+import snowflake.connector
 
 BASE_API_URL = "https://newsapi.org/v2/everything"
 
@@ -15,8 +16,31 @@ TL_CONF = {"include_segments": False}
 TL_URL = "https://app.tabulalingua.com/v0/standard/"
 
 
+def get_latest_published_at(config):
+    """Custom method to get the latest `published_at` value from our ARTICLES table in
+    Snowflake. Fivetran's state object, which keeps up with the latest datetime value
+    FROM which to query the source, has gotten out-of-sync occassionally and will miss
+    articles.
+
+    TODO: Handle empty responses for beginning state."""
+    cnx = snowflake.connector.connect(
+        user=config["snowflakeUser"],
+        password=config["snowflakePassword"],
+        account=config["snowflakeAccount"],
+        warehouse=config["snowflakeWarehouse"],
+        database=config["snowflakeDatabase"],
+        schema=config["snowflakeSchema"],
+    )
+
+    result = cnx.cursor().execute("select max(published_at) from article").fetchone()
+    return result[0].strftime("%Y-%m-%dT%H:%M:%S")
+
+
 def schema(configuration: dict):
-    """Defines the destination table schema"""
+    """Defines the destination table schema. Not required as Fivetran will infer the
+    schema from the data source. I'm being explicit since I'm adding custom values to
+    the sync.
+    """
 
     if not ("topic" in configuration):
         raise ValueError("Could not find 'topic' in configuration.json")
@@ -47,16 +71,30 @@ def schema(configuration: dict):
 
 
 def update(configuration: dict, state: dict):
+    """Required by Fivetran. Sets up parameters, iterates through topics, and passes the
+    data to sync_items() to perform each operation."""
     conf = configuration
 
     try:
-        # Set up base params (start date/time, end date/time, API key, etc.)
+        # Set up base params for calls to data source
+
         now = datetime.datetime.now()
-        delta = datetime.timedelta(days=2)
+
+        # From datetime:
+        last_pub_date = get_latest_published_at(config)
         from_ts = state.get("to_ts")
         if not from_ts:
-            from_ts = (now - delta).strftime("%Y-%m-%dT%H:%M:%S")
+            delta = datetime.timedelta(days=2)
+            a = (now - delta).strftime("%Y-%m-%dT%H:%M:%S")  # Two days ago
+            b = last_pub_date  # Latest `published_at` from warehouse articles
+            from_ts = min(a, b)
+        if last_pub_date < from_ts:
+            from_ts = last_pub_date
+
+        # To datetime:
         to_ts = now.strftime("%Y-%m-%dT%H:%M:%S")
+        log.fine(
+            f"Now: {now}, From: {from_ts}, To: {to_ts}, Pub: {last_pub_date}")
 
         params = {
             "from": from_ts,
@@ -108,6 +146,9 @@ def sync_items(headers, params, state, topic, tl_key):
         response_page = get_api_response(BASE_API_URL, headers, params)
 
         log.info(f"{response_page['totalResults']} results for topic {topic})")
+
+        if not response_page['totalResults']:
+            log.info(params)
 
         # Process the items.
         items = response_page.get("articles", [])
@@ -179,8 +220,6 @@ def sync_items(headers, params, state, topic, tl_key):
         yield op.checkpoint(state)
 
         # Determine if we should continue pagination based on the total items and the current offset.
-        more_data, params = should_continue_pagination(response_page, params)
-
         more_data, params = should_continue_pagination(response_page, params)
 
 

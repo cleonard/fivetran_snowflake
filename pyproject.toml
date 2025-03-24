@@ -9,6 +9,7 @@ dependencies = [
     "fivetran-connector-sdk",
     "python-dotenv>=1.0.1",
     "requests",
+    "snowflake-connector-python>=3.14.0",
 ]
 
 [dependency-groups]
